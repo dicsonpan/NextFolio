@@ -1,22 +1,32 @@
 
 -- ==============================================================================
--- Portfolio Pro - Supabase Schema Script (v3 - Multi-User SaaS)
+-- Portfolio Pro - Supabase Schema Script (v3.1 - One-Click Reset)
 -- ==============================================================================
+-- ⚠️ WARNING: running this script will DELETE ALL DATA in the custom tables.
+-- It does NOT delete the registered users in Authentication (auth.users).
+
+-- 1. Clean up existing structures
+-- We use CASCADE to automatically remove dependent constraints/objects
+drop table if exists public.skills cascade;
+drop table if exists public.projects cascade;
+drop table if exists public.education cascade;
+drop table if exists public.experiences cascade;
+drop table if exists public.config cascade;
+drop table if exists public.profile cascade;
+drop table if exists public.user_secrets cascade;
+
+-- Clean up storage policies to prevent "policy already exists" errors during re-run
+-- These policies are attached to the system table storage.objects, so we must drop them explicitly.
+drop policy if exists "Public Access" on storage.objects;
+drop policy if exists "Auth Upload" on storage.objects;
+drop policy if exists "Public Upload" on storage.objects;
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- 1. Drop existing tables to rebuild (since we are changing architecture fundamentally)
--- CAUTION: This deletes existing data. In production, use ALTER TABLE.
-drop table if exists public.skills;
-drop table if exists public.projects;
-drop table if exists public.education;
-drop table if exists public.experiences;
-drop table if exists public.config;
-drop table if exists public.profile;
-drop table if exists public.user_secrets;
+-- 2. Create Tables
 
--- 2. User Secrets Table (For API Keys) - Private to user
+-- User Secrets Table (For API Keys) - Private to user
 create table public.user_secrets (
   user_id uuid references auth.users not null primary key,
   gemini_api_key text,
@@ -25,8 +35,7 @@ create table public.user_secrets (
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- 3. Content Tables with user_id
-
+-- Profile Table
 create table public.profile (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -46,6 +55,7 @@ create table public.profile (
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- Config Table
 create table public.config (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -55,6 +65,7 @@ create table public.config (
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- Experiences Table
 create table public.experiences (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -68,6 +79,7 @@ create table public.experiences (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- Education Table
 create table public.education (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -81,6 +93,7 @@ create table public.education (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- Projects Table
 create table public.projects (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -95,6 +108,7 @@ create table public.projects (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
+-- Skills Table
 create table public.skills (
   id uuid not null default uuid_generate_v4() primary key,
   user_id uuid references auth.users not null,
@@ -105,14 +119,12 @@ create table public.skills (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- 4. Storage Buckets
--- Ensure bucket exists
+-- 3. Storage Buckets Setup
+-- Ensure bucket exists. If it exists, we skip creation.
 insert into storage.buckets (id, name, public) values ('portfolio-assets', 'portfolio-assets', true)
 on conflict (id) do nothing;
 
--- 5. Row Level Security (RLS) Policies
-
--- Enable RLS
+-- 4. Enable Row Level Security (RLS)
 alter table public.user_secrets enable row level security;
 alter table public.profile enable row level security;
 alter table public.config enable row level security;
@@ -121,38 +133,44 @@ alter table public.education enable row level security;
 alter table public.projects enable row level security;
 alter table public.skills enable row level security;
 
--- Policy Helper: Users can modify their own data, Everyone can view data
--- Note: In a real app, you might want "Public" view to be restricted to published profiles only.
--- Here we allow public read for portfolio display, but restricted write.
+-- 5. Create RLS Policies
 
--- Secrets: STRICTLY PRIVATE
+-- Secrets: STRICTLY PRIVATE (Only the owner can see/edit)
 create policy "Users can manage their own secrets" on public.user_secrets
   for all using (auth.uid() = user_id);
 
--- Profile & Content: Public Read, Owner Write
+-- Profile: Public Read, Owner Write
 create policy "Public read profiles" on public.profile for select using (true);
 create policy "Owner manage profiles" on public.profile for all using (auth.uid() = user_id);
 
+-- Config: Public Read, Owner Write
 create policy "Public read config" on public.config for select using (true);
 create policy "Owner manage config" on public.config for all using (auth.uid() = user_id);
 
+-- Experiences: Public Read, Owner Write
 create policy "Public read experiences" on public.experiences for select using (true);
 create policy "Owner manage experiences" on public.experiences for all using (auth.uid() = user_id);
 
+-- Education: Public Read, Owner Write
 create policy "Public read education" on public.education for select using (true);
 create policy "Owner manage education" on public.education for all using (auth.uid() = user_id);
 
+-- Projects: Public Read, Owner Write
 create policy "Public read projects" on public.projects for select using (true);
 create policy "Owner manage projects" on public.projects for all using (auth.uid() = user_id);
 
+-- Skills: Public Read, Owner Write
 create policy "Public read skills" on public.skills for select using (true);
 create policy "Owner manage skills" on public.skills for all using (auth.uid() = user_id);
 
 -- Storage Policies
--- Allow public read
-create policy "Public Access" on storage.objects for select using ( bucket_id = 'portfolio-assets' );
--- Allow authenticated users to upload to their folder (conceptually)
--- For simplicity in this demo, we allow any auth user to upload
-create policy "Auth Upload" on storage.objects for insert 
-with check ( bucket_id = 'portfolio-assets' and auth.role() = 'authenticated' );
+-- 1. Public can VIEW files in the bucket
+create policy "Public Access" on storage.objects 
+for select using ( bucket_id = 'portfolio-assets' );
+
+-- 2. Authenticated users can UPLOAD/UPDATE/DELETE files in the bucket
+-- (In a stricter production app, you might restrict this to files named with their user_id, 
+-- but for this MVP, allowing auth users to manage the bucket is acceptable)
+create policy "Auth Upload" on storage.objects 
+for insert with check ( bucket_id = 'portfolio-assets' and auth.role() = 'authenticated' );
 
