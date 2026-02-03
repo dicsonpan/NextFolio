@@ -79,5 +79,10 @@ export const MOCK_SKILLS: Skill[] = [
   { id: '4', name: 'Public Speaking', category: 'soft-skills', proficiency: 85 },
 ];
 
-export const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || '';
-export const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+// Safely access env variables. 
+// import.meta.env is provided by Vite. 
+// If running outside Vite (e.g. direct file open), this fallback prevents crashing.
+const env = (import.meta as any).env || {};
+
+export const SUPABASE_URL = env.VITE_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || '';
