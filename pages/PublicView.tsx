@@ -1,17 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { Github, Linkedin, Mail, Twitter, ExternalLink, GraduationCap, MapPin, Camera, X, Globe, Phone } from 'lucide-react';
-import { dataService } from '../services/dataService';
-import { Profile, Experience, Project, Skill, Education, SiteConfig } from '../types';
-import { Section, Container } from '../components/ui/Layouts';
 
-// --- Theme Style Defintions ---
+import React, { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Github, Linkedin, Mail, Twitter, ExternalLink, GraduationCap, MapPin, Camera, X, Globe, Phone, PlayCircle, AlertCircle } from 'lucide-react';
+import { dataService } from '../services/dataService';
+import { Profile, Experience, Project, Skill, Education, SiteConfig, LanguageCode } from '../types';
+import { Section, Container } from '../components/ui/Layouts';
+import { SUPPORTED_LANGUAGES } from '../constants';
+
 const getThemeStyles = (theme: string) => {
   switch (theme) {
     case 'classic':
       return {
         bg: 'bg-white text-zinc-900',
         sectionBg: 'bg-zinc-50',
-        cardBg: 'bg-white border-b border-zinc-200', // Minimal borders
+        cardBg: 'bg-white border-b border-zinc-200', 
         textPrimary: 'text-zinc-900',
         textSecondary: 'text-zinc-600',
         accent: 'text-blue-700',
@@ -53,7 +55,40 @@ const getThemeStyles = (theme: string) => {
   }
 };
 
+const VideoEmbed: React.FC<{ url: string }> = ({ url }) => {
+  let embedUrl = null;
+  
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    const videoId = url.split('v=')[1]?.split('&')[0] || url.split('youtu.be/')[1];
+    if (videoId) embedUrl = `https://www.youtube.com/embed/${videoId}`;
+  } else if (url.includes('bilibili.com')) {
+    const bvid = url.match(/BV[a-zA-Z0-9]+/)?.[0];
+    if (bvid) embedUrl = `https://player.bilibili.com/player.html?bvid=${bvid}&high_quality=1&danmaku=0`;
+  }
+
+  if (embedUrl) {
+    return (
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-zinc-800 bg-black">
+        <iframe 
+          src={embedUrl} 
+          className="absolute top-0 left-0 w-full h-full" 
+          frameBorder="0" 
+          allowFullScreen 
+          title="Video"
+        />
+      </div>
+    );
+  }
+  
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline mt-2">
+      <PlayCircle size={16} /> Watch Video
+    </a>
+  );
+};
+
 const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScreenshotMode: boolean }> = ({ setScreenshotMode, isScreenshotMode }) => {
+  const { userId } = useParams<{ userId: string }>();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -61,68 +96,113 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
   const [education, setEducation] = useState<Education[]>([]);
   const [config, setConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lang, setLang] = useState<LanguageCode>('en');
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [p, e, proj, s, edu, c] = await Promise.all([
-          dataService.getProfile(),
-          dataService.getExperiences(),
-          dataService.getProjects(),
-          dataService.getSkills(),
-          dataService.getEducation(),
-          dataService.getConfig()
-        ]);
-        setProfile(p);
-        setExperiences(e);
-        setProjects(proj);
-        setSkills(s);
-        setEducation(edu);
-        setConfig(c);
-      } catch (error) {
-        console.error("Failed to load data", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+    loadData(lang);
+  }, [lang, userId]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-zinc-500">Loading portfolio...</div>;
-  if (!profile || !config) return <div className="min-h-screen flex items-center justify-center text-red-500">Failed to load profile.</div>;
+  const loadData = async (language: LanguageCode) => {
+    setLoading(true);
+    try {
+      // If userId is undefined, dataService handles fallback to local or current user, 
+      // but for Public Route, we usually want explicit ID.
+      // If no ID is provided, this might be a "Demo" view.
+      const [p, e, proj, s, edu, c] = await Promise.all([
+        dataService.getProfile(language, userId),
+        dataService.getExperiences(language, userId),
+        dataService.getProjects(language, userId),
+        dataService.getSkills(language, userId),
+        dataService.getEducation(language, userId),
+        dataService.getConfig(userId)
+      ]);
+      setProfile(p);
+      setExperiences(e);
+      setProjects(proj);
+      setSkills(s);
+      setEducation(edu);
+      setConfig(c);
+    } catch (error) {
+      console.error("Failed to load data", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-zinc-500">Loading...</div>;
+
+  // Landing Page State: If no profile found and no ID provided (Root path without login)
+  if (!profile && !userId) {
+     return (
+       <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 text-white p-4 text-center">
+         <h1 className="text-4xl md:text-6xl font-bold mb-6">Portfolio<span className="text-primary">.Pro</span></h1>
+         <p className="text-xl text-zinc-400 mb-8 max-w-lg">Create a stunning, AI-powered portfolio in minutes. Manage multiple languages and designs with ease.</p>
+         <div className="flex gap-4">
+            <Link to="/auth" className="bg-primary hover:bg-emerald-600 px-8 py-3 rounded-full font-bold transition-colors">Get Started</Link>
+            <Link to="/auth" className="bg-zinc-800 hover:bg-zinc-700 px-8 py-3 rounded-full font-bold transition-colors">Login</Link>
+         </div>
+       </div>
+     );
+  }
+
+  // Not Found State
+  if (!profile) {
+    return (
+       <div className="min-h-screen flex flex-col items-center justify-center text-zinc-400 gap-4">
+         <AlertCircle size={48} className="text-red-500"/>
+         <p className="text-lg">User profile not found.</p>
+         <Link to="/" className="text-primary hover:underline">Go Home</Link>
+       </div>
+    );
+  }
+
+  // If we have data, we render the portfolio (same as before)
+  if (!config) return null; 
 
   const styles = getThemeStyles(config.theme);
-  
-  // Adjust density for screenshot mode
   const containerClass = isScreenshotMode ? 'max-w-2xl px-8 py-8' : '';
   const sectionSpacing = isScreenshotMode ? 'py-8' : 'py-20';
 
   return (
     <main className={`${styles.bg} ${styles.fontBody} min-h-screen transition-colors duration-300 ${isScreenshotMode ? 'pt-0' : 'pt-16'}`}>
       
-      {/* Screenshot Control Fab - Hidden in screenshot mode */}
+      {/* Language Switcher & Controls */}
       {!isScreenshotMode && (
-        <button 
-          onClick={() => setScreenshotMode(true)}
-          className="fixed bottom-8 right-8 z-50 bg-white text-black p-4 rounded-full shadow-xl hover:scale-110 transition-transform flex items-center gap-2 font-bold"
-          title="Screenshot Mode"
-        >
-          <Camera size={20} /> <span className="hidden md:inline">Snapshot Mode</span>
-        </button>
-      )}
+        <div className="fixed top-20 right-8 z-40 flex flex-col gap-3">
+           <div className="bg-zinc-900/90 backdrop-blur border border-zinc-800 rounded-lg p-1 shadow-lg flex flex-col">
+              {SUPPORTED_LANGUAGES.map(l => (
+                <button 
+                  key={l.code} 
+                  onClick={() => setLang(l.code as LanguageCode)}
+                  className={`px-3 py-2 text-sm font-medium rounded-md flex items-center gap-2 transition-colors ${lang === l.code ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  <span>{l.flag}</span> 
+                  <span className="hidden md:inline">{l.label}</span>
+                </button>
+              ))}
+           </div>
 
-      {/* Exit Screenshot Mode Banner */}
-      {isScreenshotMode && (
-        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 z-50 cursor-pointer print:hidden" onClick={() => setScreenshotMode(false)}>
-           Screenshot/Long-Image Mode Active. <span className="font-bold underline ml-2"><X size={14} className="inline"/> Click here or ESC to Exit</span>
+           <button 
+            onClick={() => setScreenshotMode(true)}
+            className="bg-white text-black p-3 rounded-full shadow-xl hover:scale-110 transition-transform flex items-center justify-center"
+            title="Snapshot Mode"
+          >
+            <Camera size={20} />
+          </button>
         </div>
       )}
 
-      {/* Header / Hero */}
+      {isScreenshotMode && (
+        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 z-50 cursor-pointer print:hidden" onClick={() => setScreenshotMode(false)}>
+           Screenshot/Long-Image Mode Active. <span className="font-bold underline ml-2"><X size={14} className="inline"/> Exit</span>
+        </div>
+      )}
+
+      {/* Hero */}
       <section id="about" className={`relative ${isScreenshotMode ? 'py-10' : 'min-h-[60vh] flex items-center'}`}>
         <Container className={containerClass}>
            <div className={`flex flex-col ${config.theme === 'classic' || isScreenshotMode ? 'md:flex-row md:items-center md:text-left text-left gap-8' : 'text-center items-center'}`}>
-             <div className="relative">
+             <div className="relative flex-shrink-0">
                <div className={`w-32 h-32 md:w-40 md:h-40 overflow-hidden shadow-xl ${styles.radius} ${config.theme === 'creative' ? 'border-4 border-black' : ''}`}>
                  <img src={profile.avatar_url} alt={profile.name} className="w-full h-full object-cover" />
                </div>
@@ -132,20 +212,10 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
                <h1 className={`text-4xl md:text-6xl ${styles.fontHead} ${styles.textPrimary} mb-2`}>
                  {profile.name}
                </h1>
-               
-               <h2 className={`text-xl md:text-2xl ${styles.textSecondary} mb-4 font-medium`}>
-                 {profile.title}
-               </h2>
+               <h2 className={`text-xl md:text-2xl ${styles.textSecondary} mb-4 font-medium`}>{profile.title}</h2>
+               {profile.tagline && <p className={`text-lg ${styles.accent} mb-4 font-medium`}>{profile.tagline}</p>}
+               <p className={`${styles.textSecondary} text-base md:text-lg leading-relaxed max-w-2xl mb-6`}>{profile.bio}</p>
 
-               {profile.tagline && (
-                  <p className={`text-lg ${styles.accent} mb-4 font-medium`}>{profile.tagline}</p>
-               )}
-               
-               <p className={`${styles.textSecondary} text-base md:text-lg leading-relaxed max-w-2xl mb-6`}>
-                 {profile.bio}
-               </p>
-
-               {/* Contact Grid */}
                <div className={`flex flex-wrap gap-4 ${config.theme !== 'classic' && !isScreenshotMode ? 'justify-center' : 'justify-start'} text-sm ${styles.textSecondary}`}>
                  <div className="flex items-center gap-1"><MapPin size={16}/> {profile.location}</div>
                  <a href={`mailto:${profile.email}`} className="flex items-center gap-1 hover:underline"><Mail size={16}/> {profile.email}</a>
@@ -154,27 +224,19 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
                  
                  <div className="w-full h-0 md:w-auto md:h-4 md:border-r border-zinc-500/30 hidden md:block"></div>
                  
-                 {profile.github_url && (
-                   <a href={profile.github_url} target="_blank" rel="noreferrer" className="hover:opacity-80 transition-opacity">
-                     <Github size={18} />
-                   </a>
-                 )}
-                 {profile.linkedin_url && (
-                   <a href={profile.linkedin_url} target="_blank" rel="noreferrer" className="hover:opacity-80 transition-opacity">
-                     <Linkedin size={18} />
-                   </a>
-                 )}
+                 {profile.github_url && <a href={profile.github_url} target="_blank" rel="noreferrer"><Github size={18} /></a>}
+                 {profile.linkedin_url && <a href={profile.linkedin_url} target="_blank" rel="noreferrer"><Linkedin size={18} /></a>}
                </div>
              </div>
            </div>
         </Container>
       </section>
 
-      {/* Experience Section */}
+      {/* Experience */}
       <section id="experience" className={`${styles.sectionBg} ${sectionSpacing}`}>
         <Container className={containerClass}>
           <div className={`mb-12 ${config.theme === 'modern' ? 'text-center' : 'text-left'}`}>
-            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Work Experience</h2>
+            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Experience</h2>
             {config.theme === 'modern' && <div className="w-16 h-1 bg-emerald-500 mx-auto rounded-full" />}
           </div>
 
@@ -191,19 +253,15 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
                     {exp.start_date} — {exp.end_date || 'Present'}
                   </span>
                 </div>
-                
                 <div className={`${styles.accent} font-semibold mb-2`}>{exp.company}</div>
-                
-                <p className={`${styles.textSecondary} leading-relaxed text-sm md:text-base`}>
-                  {exp.description}
-                </p>
+                <p className={`${styles.textSecondary} leading-relaxed text-sm md:text-base`}>{exp.description}</p>
               </div>
             ))}
           </div>
         </Container>
       </section>
 
-       {/* Education Section (New) */}
+       {/* Education */}
        {education.length > 0 && (
         <section id="education" className={`${styles.bg} ${sectionSpacing}`}>
           <Container className={containerClass}>
@@ -225,9 +283,7 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
                       <div className={`text-sm ${styles.textSecondary} mt-1`}>
                         {edu.start_date} — {edu.end_date || 'Present'}
                       </div>
-                      {edu.description && (
-                        <p className={`text-sm ${styles.textSecondary} mt-3`}>{edu.description}</p>
-                      )}
+                      {edu.description && <p className={`text-sm ${styles.textSecondary} mt-3`}>{edu.description}</p>}
                     </div>
                   </div>
                 </div>
@@ -237,12 +293,12 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
         </section>
       )}
 
-      {/* Projects Section - Conditional Render based on count */}
+      {/* Projects */}
       {projects.length > 0 && (
         <section id="projects" className={`${styles.sectionBg} ${sectionSpacing}`}>
            <Container className={containerClass}>
             <div className={`mb-12 ${config.theme === 'modern' ? 'text-center' : 'text-left'}`}>
-              <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Selected Projects</h2>
+              <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Projects</h2>
                {config.theme === 'modern' && <div className="w-16 h-1 bg-emerald-500 mx-auto rounded-full" />}
             </div>
 
@@ -250,12 +306,18 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
               {projects.map((project) => (
                 <div key={project.id} className={`group relative ${styles.cardBg} ${styles.radius} overflow-hidden ${config.theme === 'creative' ? 'hover:-translate-y-2 transition-transform' : ''}`}>
                   {!isScreenshotMode && (
-                    <div className="aspect-video overflow-hidden border-b border-zinc-800/20">
-                      <img 
-                        src={project.image_url} 
-                        alt={project.title} 
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                      />
+                    <div className="overflow-hidden border-b border-zinc-800/20">
+                      {project.video_url ? (
+                        <VideoEmbed url={project.video_url} />
+                      ) : (
+                        <div className="aspect-video">
+                           <img 
+                            src={project.image_url} 
+                            alt={project.title} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="p-6">
@@ -269,9 +331,7 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
                        )}
                     </div>
                     
-                    <p className={`${styles.textSecondary} mb-4 text-sm line-clamp-3`}>
-                      {project.description}
-                    </p>
+                    <p className={`${styles.textSecondary} mb-4 text-sm line-clamp-3`}>{project.description}</p>
 
                     <div className="flex flex-wrap gap-2">
                       {project.tags.map(tag => (
@@ -288,11 +348,11 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
         </section>
       )}
 
-      {/* Skills Section */}
+      {/* Skills */}
       <section id="skills" className={`${styles.bg} ${sectionSpacing}`}>
         <Container className={containerClass}>
           <div className={`mb-12 ${config.theme === 'modern' ? 'text-center' : 'text-left'}`}>
-            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Skills & Tools</h2>
+            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-4`}>Skills</h2>
              {config.theme === 'modern' && <div className="w-16 h-1 bg-emerald-500 mx-auto rounded-full" />}
           </div>
           
@@ -300,20 +360,17 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
              {skills.map(skill => (
                <div key={skill.id} className={`${styles.cardBg} px-4 py-2 ${styles.radius} flex items-center gap-2`}>
                  <span className={`font-semibold ${styles.textPrimary}`}>{skill.name}</span>
-                 {config.theme === 'modern' && (
-                    <span className="text-xs text-zinc-500">| {skill.proficiency}%</span>
-                 )}
+                 {config.theme === 'modern' && <span className="text-xs text-zinc-500">| {skill.proficiency}%</span>}
                </div>
              ))}
           </div>
         </Container>
       </section>
       
-      {/* Contact Simple */}
       {!isScreenshotMode && (
         <section className={`${styles.sectionBg} py-20 text-center`}>
           <Container>
-            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-6`}>Interested in working together?</h2>
+            <h2 className={`text-3xl ${styles.fontHead} ${styles.textPrimary} mb-6`}>Contact Me</h2>
             <a href={`mailto:${profile.email}`} className={`inline-block px-8 py-3 font-bold transition-colors ${styles.button} ${styles.radius}`}>
               Get in Touch
             </a>

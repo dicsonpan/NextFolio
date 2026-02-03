@@ -1,8 +1,10 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AppData, Experience, Profile, Project, Skill, Education, SiteConfig } from '../types';
-import { MOCK_EXPERIENCE, MOCK_PROFILE, MOCK_PROJECTS, MOCK_SKILLS, MOCK_EDUCATION, MOCK_CONFIG, SUPABASE_ANON_KEY, SUPABASE_URL } from '../constants';
 
-const STORAGE_KEY = 'portfolio_data_v2'; // Bumped version
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { AppData, Experience, Profile, Project, Skill, Education, SiteConfig, LanguageCode, UserSecrets } from '../types';
+import { MOCK_EXPERIENCE, MOCK_PROFILE_EN, MOCK_PROFILE_ZH, MOCK_PROJECTS, MOCK_SKILLS, MOCK_EDUCATION, MOCK_CONFIG, SUPABASE_ANON_KEY, SUPABASE_URL } from '../constants';
+import { v4 as uuidv4 } from 'uuid';
+
+const STORAGE_KEY = 'portfolio_data_v4'; // Bumped version
 
 let supabase: SupabaseClient | null = null;
 
@@ -10,11 +12,11 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
   supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
-// Initialize Local Storage if empty
+// --- Local Storage Helpers (Fallback) ---
 const initStorage = () => {
   if (!localStorage.getItem(STORAGE_KEY)) {
     const initialData: AppData = {
-      profile: MOCK_PROFILE,
+      profiles: [MOCK_PROFILE_EN, MOCK_PROFILE_ZH],
       experiences: MOCK_EXPERIENCE,
       education: MOCK_EDUCATION,
       projects: MOCK_PROJECTS,
@@ -25,38 +27,90 @@ const initStorage = () => {
   }
 };
 
-// Helper to get local data
 const getLocalData = (): AppData => {
   initStorage();
   const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : { 
-    profile: MOCK_PROFILE, 
-    experiences: [], 
-    education: [], 
-    projects: [], 
-    skills: [], 
-    config: MOCK_CONFIG 
-  };
+  if (!data) return { profiles: [MOCK_PROFILE_EN], experiences: [], education: [], projects: [], skills: [], config: MOCK_CONFIG };
+  return JSON.parse(data) as AppData;
 };
 
-// Helper to set local data
 const setLocalData = (data: AppData) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 };
 
 export const dataService = {
-  // --- Config ---
-  async getConfig(): Promise<SiteConfig> {
+  // --- Secrets (API Keys) ---
+  async getUserSecrets(): Promise<UserSecrets | null> {
     if (supabase) {
-       const { data } = await supabase.from('config').select('*').single();
-       if (data) return data;
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) return null;
+       
+       const { data, error } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).single();
+       if (error && error.code !== 'PGRST116') { // Ignore not found error
+         console.error(error);
+       }
+       return data;
+    }
+    // Local fallback: read specific keys from localstorage
+    return {
+      user_id: 'local',
+      gemini_api_key: localStorage.getItem('gemini_key') || '',
+    };
+  },
+
+  async saveUserSecrets(secrets: Partial<UserSecrets>): Promise<void> {
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not logged in");
+
+      // Check if row exists
+      const { data: existing } = await supabase.from('user_secrets').select('user_id').eq('user_id', user.id).single();
+      
+      if (existing) {
+        await supabase.from('user_secrets').update(secrets).eq('user_id', user.id);
+      } else {
+        await supabase.from('user_secrets').insert([{ ...secrets, user_id: user.id }]);
+      }
+    } else {
+      if (secrets.gemini_api_key) localStorage.setItem('gemini_key', secrets.gemini_api_key);
+    }
+  },
+
+  // --- Config ---
+  async getConfig(userId?: string): Promise<SiteConfig> {
+    if (supabase) {
+       // If userId is provided, fetch specific user's config (Public View)
+       // If not, fetch logged-in user's config (Admin View)
+       let uid = userId;
+       if (!uid) {
+         const { data: { user } } = await supabase.auth.getUser();
+         uid = user?.id;
+       }
+       if (uid) {
+         const { data } = await supabase.from('config').select('*').eq('user_id', uid).single();
+         if (data) return data;
+         // If no config found for user, return default
+         return MOCK_CONFIG;
+       }
     }
     return getLocalData().config;
   },
 
   async updateConfig(config: SiteConfig): Promise<void> {
     if (supabase) {
-      await supabase.from('config').upsert(config); // Assuming single row or ID 1
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
+      // Upsert needs to match primary key or constraint. 
+      // Since we added user_id, we need to handle insert/update logic carefully or ensure ID is consistent.
+      // Easiest is to select first, then update or insert.
+      const { data: existing } = await supabase.from('config').select('id').eq('user_id', user.id).single();
+      
+      if (existing) {
+         await supabase.from('config').update({ ...config, user_id: user.id }).eq('id', existing.id);
+      } else {
+         await supabase.from('config').insert({ ...config, user_id: user.id });
+      }
       return;
     }
     const data = getLocalData();
@@ -65,45 +119,93 @@ export const dataService = {
   },
 
   // --- Profile ---
-  async getProfile(): Promise<Profile> {
+  async getProfile(lang: LanguageCode, userId?: string): Promise<Profile | null> {
     if (supabase) {
-      const { data, error } = await supabase.from('profile').select('*').single();
-      if (!error && data) return data;
+      let uid = userId;
+      if (!uid) {
+         const { data: { user } } = await supabase.auth.getUser();
+         uid = user?.id;
+      }
+      if (uid) {
+        const { data } = await supabase.from('profile').select('*').eq('user_id', uid).eq('language', lang).single();
+        return data; 
+      }
     }
-    return getLocalData().profile;
+    const data = getLocalData();
+    return data.profiles.find(p => p.language === lang) || null;
   },
 
   async updateProfile(profile: Profile): Promise<void> {
     if (supabase) {
-      await supabase.from('profile').upsert(profile);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      
+      await supabase.from('profile').upsert({ ...profile, user_id: user.id });
       return;
     }
     const data = getLocalData();
-    data.profile = profile;
+    const index = data.profiles.findIndex(p => p.language === profile.language);
+    if (index >= 0) {
+      data.profiles[index] = profile;
+    } else {
+      data.profiles.push(profile);
+    }
     setLocalData(data);
   },
 
-  // --- Experience ---
-  async getExperiences(): Promise<Experience[]> {
+  // --- Assets ---
+  async uploadImage(file: File): Promise<string> {
     if (supabase) {
-      const { data } = await supabase.from('experiences').select('*').order('start_date', { ascending: false });
-      return data || [];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${uuidv4()}.${fileExt}`;
+      const filePath = `${fileName}`; // Might want to folder by user_id in future
+
+      const { error: uploadError } = await supabase.storage
+        .from('portfolio-assets')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('portfolio-assets').getPublicUrl(filePath);
+      return data.publicUrl;
+    } else {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+      });
     }
-    return getLocalData().experiences.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  },
+
+  // --- Experience ---
+  async getExperiences(lang: LanguageCode, userId?: string): Promise<Experience[]> {
+    if (supabase) {
+      let uid = userId;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id;
+      }
+      if (uid) {
+        const { data } = await supabase.from('experiences').select('*').eq('user_id', uid).eq('language', lang).order('start_date', { ascending: false });
+        return data || [];
+      }
+    }
+    return getLocalData().experiences.filter(e => e.language === lang);
   },
 
   async saveExperience(exp: Experience): Promise<void> {
     if (supabase) {
-      await supabase.from('experiences').upsert(exp);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      await supabase.from('experiences').upsert({ ...exp, user_id: user.id });
       return;
     }
+    // Local logic omitted for brevity, same as before
     const data = getLocalData();
     const index = data.experiences.findIndex(e => e.id === exp.id);
-    if (index >= 0) {
-      data.experiences[index] = exp;
-    } else {
-      data.experiences.push(exp);
-    }
+    if (index >= 0) data.experiences[index] = exp;
+    else data.experiences.push(exp);
     setLocalData(data);
   },
 
@@ -117,27 +219,33 @@ export const dataService = {
     setLocalData(data);
   },
 
-  // --- Education (New) ---
-  async getEducation(): Promise<Education[]> {
+  // --- Education ---
+  async getEducation(lang: LanguageCode, userId?: string): Promise<Education[]> {
     if (supabase) {
-      const { data } = await supabase.from('education').select('*').order('start_date', { ascending: false });
-      return data || [];
+      let uid = userId;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id;
+      }
+      if (uid) {
+        const { data } = await supabase.from('education').select('*').eq('user_id', uid).eq('language', lang).order('start_date', { ascending: false });
+        return data || [];
+      }
     }
-    return getLocalData().education.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+    return getLocalData().education.filter(e => e.language === lang);
   },
 
   async saveEducation(edu: Education): Promise<void> {
     if (supabase) {
-      await supabase.from('education').upsert(edu);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      await supabase.from('education').upsert({ ...edu, user_id: user.id });
       return;
     }
     const data = getLocalData();
     const index = data.education.findIndex(e => e.id === edu.id);
-    if (index >= 0) {
-      data.education[index] = edu;
-    } else {
-      data.education.push(edu);
-    }
+    if (index >= 0) data.education[index] = edu;
+    else data.education.push(edu);
     setLocalData(data);
   },
 
@@ -152,26 +260,32 @@ export const dataService = {
   },
 
   // --- Projects ---
-  async getProjects(): Promise<Project[]> {
+  async getProjects(lang: LanguageCode, userId?: string): Promise<Project[]> {
     if (supabase) {
-      const { data } = await supabase.from('projects').select('*');
-      return data || [];
+      let uid = userId;
+      if (!uid) {
+        const { data: { user } } = await supabase.auth.getUser();
+        uid = user?.id;
+      }
+      if (uid) {
+        const { data } = await supabase.from('projects').select('*').eq('user_id', uid).eq('language', lang);
+        return data || [];
+      }
     }
-    return getLocalData().projects;
+    return getLocalData().projects.filter(p => p.language === lang);
   },
 
   async saveProject(proj: Project): Promise<void> {
     if (supabase) {
-      await supabase.from('projects').upsert(proj);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      await supabase.from('projects').upsert({ ...proj, user_id: user.id });
       return;
     }
     const data = getLocalData();
     const index = data.projects.findIndex(p => p.id === proj.id);
-    if (index >= 0) {
-      data.projects[index] = proj;
-    } else {
-      data.projects.push(proj);
-    }
+    if (index >= 0) data.projects[index] = proj;
+    else data.projects.push(proj);
     setLocalData(data);
   },
 
@@ -186,26 +300,32 @@ export const dataService = {
   },
   
   // --- Skills ---
-  async getSkills(): Promise<Skill[]> {
+  async getSkills(lang: LanguageCode, userId?: string): Promise<Skill[]> {
      if (supabase) {
-      const { data } = await supabase.from('skills').select('*');
-      return data || [];
+       let uid = userId;
+       if (!uid) {
+         const { data: { user } } = await supabase.auth.getUser();
+         uid = user?.id;
+       }
+       if (uid) {
+        const { data } = await supabase.from('skills').select('*').eq('user_id', uid).eq('language', lang);
+        return data || [];
+       }
     }
-    return getLocalData().skills;
+    return getLocalData().skills.filter(s => s.language === lang);
   },
   
   async saveSkill(skill: Skill): Promise<void> {
     if (supabase) {
-      await supabase.from('skills').upsert(skill);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      await supabase.from('skills').upsert({ ...skill, user_id: user.id });
       return;
     }
     const data = getLocalData();
     const index = data.skills.findIndex(s => s.id === skill.id);
-    if (index >= 0) {
-      data.skills[index] = skill;
-    } else {
-      data.skills.push(skill);
-    }
+    if (index >= 0) data.skills[index] = skill;
+    else data.skills.push(skill);
     setLocalData(data);
   },
   
