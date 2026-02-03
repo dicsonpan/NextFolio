@@ -6,13 +6,20 @@ import { LayoutDashboard, Monitor, LogIn, LogOut, User } from 'lucide-react';
 import { authService } from '../../services/authService';
 
 // Logo Component
+// Design: A geometric monogram combining 'N' and 'F'.
+// The Left Vertical and Top/Middle bars form an 'F' (White).
+// A diagonal stroke connects the F to a Right Vertical bar to form an 'N' (Primary Green), representing "Next".
 const Logo: React.FC<{ className?: string }> = ({ className = 'w-8 h-8' }) => (
   <svg className={className} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="40" height="40" rx="8" fill="currentColor" className="text-zinc-900"/>
-    <rect x="2" y="2" width="36" height="36" rx="6" stroke="currentColor" strokeWidth="2" className="text-zinc-700"/>
-    {/* Stylized N and Folio/Page Arrow */}
-    <path d="M12 28V12L22 20L12 28Z" fill="currentColor" className="text-primary"/>
-    <path d="M16 12H28V28H24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white"/>
+    {/* Background: Dark rounded square (Zinc-900/950) */}
+    <rect width="40" height="40" rx="8" fill="#18181b"/>
+    
+    {/* White Shape: Forms the letter 'F' */}
+    <path d="M10 10H24V14H14V19H22V23H14V30H10V10Z" fill="white"/>
+    
+    {/* Green Shape: Forms the diagonal and right leg of 'N', integrating with the 'F' */}
+    {/* The diagonal cuts through, creating a sense of forward motion (Next) */}
+    <path d="M14 10L26 26V10H30V30H26L14 14V10Z" fill="#10b981"/> 
   </svg>
 );
 
