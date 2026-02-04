@@ -1,5 +1,5 @@
 {
   "name": "NextFolio",
-  "description": "A premium, dynamic portfolio builder with an integrated admin dashboard. Powered by React, Tailwind, and Supabase architecture.",
+  "description": "专为中小学生设计的数字成长档案工具。简单易用，帮助学生记录奖项、作品和实践经历，支持 AI 文案润色与一键生成分享长图。",
   "requestFramePermissions": []
 }

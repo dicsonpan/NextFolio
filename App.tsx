@@ -7,7 +7,6 @@ import PublicView from './pages/PublicView';
 import AdminView from './pages/AdminView';
 import Auth from './pages/Auth';
 import { authService } from './services/authService';
-import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
    const [loading, setLoading] = useState(true);
