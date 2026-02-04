@@ -13,7 +13,7 @@ type Tab = 'profile' | 'education' | 'experience' | 'projects' | 'skills' | 'des
 
 const AdminView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
-  const [lang, setLang] = useState<LanguageCode>('en');
+  const [lang, setLang] = useState<LanguageCode>('zh-TW');
   
   // Data State
   const [profile, setProfile] = useState<Profile | null>(null);

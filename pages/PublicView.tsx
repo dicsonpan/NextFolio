@@ -97,7 +97,7 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
   const [education, setEducation] = useState<Education[]>([]);
   const [config, setConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lang, setLang] = useState<LanguageCode>('en');
+  const [lang, setLang] = useState<LanguageCode>('zh-TW');
 
   useEffect(() => {
     loadData(lang);
@@ -214,7 +214,7 @@ const PublicView: React.FC<{ setScreenshotMode: (mode: boolean) => void, isScree
 
       {isScreenshotMode && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 z-50 cursor-pointer print:hidden" onClick={() => setScreenshotMode(false)}>
-           Screenshot/Long-Image Mode Active. <span className="font-bold underline ml-2"><X size={14} className="inline"/> Exit</span>
+           Snapshot/Long-Image Mode Active. <span className="font-bold underline ml-2"><X size={14} className="inline"/> Exit</span>
         </div>
       )}
 
