@@ -1,11 +1,13 @@
 
 import React, { useState } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';import { Analytics } from '@vercel/analytics/react';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { Navbar, Footer } from './components/ui/Layouts';
 import PublicView from './pages/PublicView';
 import AdminView from './pages/AdminView';
 import Auth from './pages/Auth';
 import { authService } from './services/authService';
+import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
    const [loading, setLoading] = useState(true);
@@ -47,7 +49,8 @@ const App: React.FC = () => {
             } />
           </Routes>
         </div>
-        <Footer hidden={isScreenshotMode} /> <Analytics />
+        <Footer hidden={isScreenshotMode} /> 
+        <Analytics />
       </div>
     </HashRouter>
   );
