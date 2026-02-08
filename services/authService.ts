@@ -1,4 +1,3 @@
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 
@@ -45,6 +44,9 @@ export const authService = {
       email,
       options: {
         shouldCreateUser: true, // Allows registration via this flow
+        // Fix: Ensure the magic link redirects to the current URL (e.g. localhost:5173) 
+        // instead of the default localhost:3000 which causes "Cannot connect to server" errors.
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
       },
     });
     if (error) throw error;
@@ -54,11 +56,27 @@ export const authService = {
   async verifyOtp(email: string, token: string) {
     if (!supabase) throw new Error("Supabase is not configured.");
     
-    const { data, error } = await supabase.auth.verifyOtp({
+    // Try verifying as a standard 'email' OTP (for login)
+    let { data, error } = await supabase.auth.verifyOtp({
       email,
       token,
       type: 'email',
     });
+
+    // If that fails, try verifying as a 'signup' token (for new user registration)
+    if (error) {
+      const retry = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'signup',
+      });
+      // If retry succeeds, use that data; otherwise keep original error or use retry error
+      if (!retry.error) {
+        data = retry.data;
+        error = null;
+      }
+    }
+
     if (error) throw error;
     return data;
   },
