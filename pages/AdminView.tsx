@@ -1,7 +1,9 @@
+
 import React, { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, User, Briefcase, FolderGit2, Cpu, GraduationCap, Palette, Sparkles, Wand2 } from 'lucide-react';
+import { Plus, Trash2, Save, User, Briefcase, FolderGit2, Cpu, GraduationCap, Palette, Sparkles, Wand2, Lock, ShieldCheck } from 'lucide-react';
 import { dataService } from '../services/dataService';
+import { authService } from '../services/authService';
 import { aiService } from '../services/aiService';
 import { Profile, Experience, Project, Skill, Education, SiteConfig, ThemeType, LanguageCode } from '../types';
 import { Button, Input, TextArea, FileUpload } from '../components/ui/Inputs';
@@ -25,7 +27,12 @@ const AdminView: React.FC = () => {
   // UI State
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [aiLoading, setAiLoading] = useState<string | null>(null); // holds the field ID being polished
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+
+  // Settings State
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState<{type: 'success'|'error', text: string} | null>(null);
 
   useEffect(() => {
     loadAll(lang);
@@ -46,12 +53,10 @@ const AdminView: React.FC = () => {
     if (!p && language !== 'en') {
         const confirmCopy = window.confirm(`No profile found for ${language}. Create one based on English?`);
         if (confirmCopy) {
-             // Fetch base English profile to copy
              const baseProfile = await dataService.getProfile('en') || MOCK_PROFILE_EN;
              const newProfile = { ...baseProfile, id: uuidv4(), language };
              setProfile(newProfile);
         } else {
-             // Fallback empty
              setProfile({ ...MOCK_PROFILE_EN, id: uuidv4(), language, name: '', bio: '' });
         }
     } else {
@@ -106,6 +111,29 @@ const AdminView: React.FC = () => {
     await dataService.updateConfig(config);
     setSaving(false);
     alert('Design settings updated!');
+  };
+
+  const handleUpdatePassword = async () => {
+    setPasswordMsg(null);
+    if (newPassword.length < 6) {
+        setPasswordMsg({type: 'error', text: 'Password must be at least 6 characters.'});
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        setPasswordMsg({type: 'error', text: 'Passwords do not match.'});
+        return;
+    }
+    setSaving(true);
+    try {
+        await authService.updatePassword(newPassword);
+        setPasswordMsg({type: 'success', text: 'Password updated successfully!'});
+        setNewPassword('');
+        setConfirmPassword('');
+    } catch (err: any) {
+        setPasswordMsg({type: 'error', text: err.message || 'Failed to update password.'});
+    } finally {
+        setSaving(false);
+    }
   };
 
   const handleUploadImage = async (file: File) => {
@@ -170,8 +198,8 @@ const AdminView: React.FC = () => {
                     </button>
                 ))}
               </div>
-              <Button variant="ghost" onClick={() => setActiveTab('settings')} className={activeTab === 'settings' ? 'bg-zinc-800 text-white' : ''}>
-                 Settings
+              <Button variant="ghost" onClick={() => setActiveTab('settings')} className={`flex items-center gap-2 ${activeTab === 'settings' ? 'bg-zinc-800 text-white' : ''}`}>
+                 <Lock size={16} /> Settings
               </Button>
            </div>
         </div>
@@ -206,13 +234,53 @@ const AdminView: React.FC = () => {
             
             {/* SETTINGS TAB */}
             {activeTab === 'settings' && (
-               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 md:p-8 animate-fade-in">
-                  <h3 className="text-2xl font-bold text-white mb-6">Global Settings</h3>
-                  <div className="mb-8 text-zinc-400 text-sm">
-                     <p>Application version: 1.0.0</p>
-                     <p>Environment: {process.env.NODE_ENV || 'development'}</p>
-                     <p className="mt-4 text-xs text-zinc-500">API Keys are managed via environment variables.</p>
-                  </div>
+               <div className="space-y-6 animate-fade-in">
+                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 md:p-8">
+                    <h3 className="text-2xl font-bold text-white mb-6">Application Settings</h3>
+                    <div className="text-zinc-400 text-sm">
+                       <p>App Version: 1.0.1</p>
+                       <p>Environment: {process.env.NODE_ENV || 'production'}</p>
+                    </div>
+                 </div>
+
+                 {/* Password Section */}
+                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 md:p-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
+                           <ShieldCheck size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-white">Account Security</h3>
+                          <p className="text-sm text-zinc-400">Set or update your password for easier login.</p>
+                        </div>
+                    </div>
+
+                    <div className="max-w-md">
+                        <Input 
+                            label="New Password" 
+                            type="password" 
+                            value={newPassword} 
+                            onChange={e => setNewPassword(e.target.value)} 
+                            placeholder="Min 6 characters"
+                        />
+                        <Input 
+                            label="Confirm Password" 
+                            type="password" 
+                            value={confirmPassword} 
+                            onChange={e => setConfirmPassword(e.target.value)} 
+                        />
+                        
+                        {passwordMsg && (
+                            <div className={`text-sm mb-4 p-2 rounded ${passwordMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                {passwordMsg.text}
+                            </div>
+                        )}
+
+                        <Button onClick={handleUpdatePassword} disabled={saving}>
+                            {saving ? 'Updating...' : 'Update Password'}
+                        </Button>
+                    </div>
+                 </div>
                </div>
             )}
 

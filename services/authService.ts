@@ -1,3 +1,4 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 
@@ -12,7 +13,6 @@ export const authService = {
   getClient() {
     if (!supabase) {
       // Return a mock object to allow the app to render in "Demo/Offline" mode without crashing
-      // specifically for the onAuthStateChange listener in Navbar which expects a valid client structure
       return {
         auth: {
           onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -36,12 +36,14 @@ export const authService = {
     return data.user;
   },
 
+  // --- OTP (Verification Code) Methods ---
+
   // Step 1: Send OTP to email
   async signInWithOtp(email: string) {
     if (!supabase) throw new Error("Supabase is not configured. Authentication is disabled.");
     
     // By NOT providing emailRedirectTo, we encourage Supabase to send a numeric code 
-    // instead of a magic link (depending on the email template configuration).
+    // instead of a magic link.
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -69,13 +71,49 @@ export const authService = {
         token,
         type: 'signup',
       });
-      // If retry succeeds, use that data; otherwise keep original error or use retry error
       if (!retry.error) {
         data = retry.data;
         error = null;
       }
     }
 
+    if (error) throw error;
+    return data;
+  },
+
+  // --- Password Methods ---
+
+  // Login with Email & Password
+  async signInWithPassword(email: string, password: string) {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // Update Password (for logged in users)
+  async updatePassword(newPassword: string) {
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // --- OAuth (Social) Methods ---
+  
+  async signInWithOAuth(provider: 'google' | 'github' | 'discord' | 'notion') { // Note: 'wechat' requires specific configuration
+    if (!supabase) throw new Error("Supabase is not configured.");
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: window.location.origin + '/admin', // Redirect back to admin after social login
+      }
+    });
     if (error) throw error;
     return data;
   },
